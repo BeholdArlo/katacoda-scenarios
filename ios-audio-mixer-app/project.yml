@@ -1,0 +1,36 @@
+name: AudioMixerApp
+
+options:
+  bundleIdPrefix: com.audiomixer
+  deploymentTarget:
+    iOS: "16.0"
+  defaultConfig: Debug
+  xcodeVersion: "15"
+
+configs:
+  Debug:   debug
+  Release: release
+
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.audiomixer.app
+    SWIFT_VERSION: "5.9"
+    TARGETED_DEVICE_FAMILY: "1,2"   # iPhone + iPad
+    IPHONEOS_DEPLOYMENT_TARGET: "16.0"
+    DEVELOPMENT_TEAM: ""            # Fill in your Apple Developer Team ID
+
+targets:
+  AudioMixerApp:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/AudioMixerApp
+        excludes:
+          - "**/*.md"
+    info:
+      path: Sources/AudioMixerApp/Info.plist
+    settings:
+      base:
+        INFOPLIST_FILE: Sources/AudioMixerApp/Info.plist
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: YES
