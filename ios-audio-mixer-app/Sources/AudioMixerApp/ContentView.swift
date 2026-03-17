@@ -6,18 +6,21 @@ struct ContentView: View {
     @EnvironmentObject var spotifyRemote:  SpotifyRemoteService
     @EnvironmentObject var nowPlaying:     NowPlayingMonitor
 
+    @Environment(\.scenePhase) private var scenePhase
+
     // YouTube embedded-player state (owned here, passed down to WKWebView)
-    @State private var ytVideoID   = "dQw4w9WgXcQ"   // default: Never Gonna Give You Up
-    @State private var ytVolume    = 80.0              // 0–100 (IFrame API scale)
-    @State private var ytPan       = 0.0               // -1 … 0 … 1
-    @State private var ytPlaying   = true
+    // ytVideoID persists across launches; last video the user loaded is remembered.
+    @AppStorage("lastYTVideoID") private var ytVideoID = "dQw4w9WgXcQ"
+    @State private var ytVolume  = 80.0   // 0–100 (IFrame API scale); also driven by crossfader
+    @State private var ytPan     = 0.0    // -1 … 0 … 1
+    @State private var ytPlaying = true
 
     @State private var selectedTab = 0
 
     var body: some View {
         VStack(spacing: 0) {
             // ── Embedded YouTube player (always visible) ──────────────────
-            // Full DSP: volume and stereo pan controlled via Web Audio API JS.
+            // Full DSP: volume and stereo pan via Web Audio API JS.
             YouTubeSection(
                 videoID:   $ytVideoID,
                 ytVolume:  $ytVolume,
@@ -37,10 +40,10 @@ struct ContentView: View {
                     .tag(0)
 
                 // Tab 1 – Remote: control native YouTube & Spotify apps
-                //   • YouTube: Now Playing info + URL-scheme to open app
-                //   • Spotify: full transport + independent volume via App Remote
-                //   • Crossfader: equal-power fade across both sources
-                RemoteControlView()
+                //   • Crossfader drives ytVolume (embedded player) + Spotify App Remote volume
+                //   • YouTube Now Playing info + URL-scheme open
+                //   • Spotify: full transport via App Remote SDK
+                RemoteControlView(ytVolume: $ytVolume)
                     .tabItem { Label("Remote", systemImage: "dot.radiowaves.left.and.right") }
                     .tag(1)
 
@@ -58,6 +61,12 @@ struct ContentView: View {
             } else {
                 nowPlaying.stopMonitoring()
             }
+        }
+        // Stop/restart Now Playing polling on app background/foreground
+        .onChange(of: scenePhase) { _, phase in
+            guard selectedTab == 1 else { return }
+            if phase == .active  { nowPlaying.startMonitoring() }
+            else                 { nowPlaying.stopMonitoring() }
         }
     }
 }

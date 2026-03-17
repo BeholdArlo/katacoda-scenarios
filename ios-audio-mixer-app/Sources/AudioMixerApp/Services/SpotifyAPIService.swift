@@ -60,6 +60,10 @@ final class SpotifyAPIService: NSObject, ObservableObject, ASWebAuthenticationPr
     // MARK: – Auth Flow
 
     func authenticate() {
+        guard Config.clientID != "YOUR_SPOTIFY_CLIENT_ID" else {
+            authError = "Set Config.clientID in SpotifyAPIService.swift before authenticating."
+            return
+        }
         let verifier = generateCodeVerifier()
         codeVerifier = verifier
         let challenge = codeChallenge(from: verifier)

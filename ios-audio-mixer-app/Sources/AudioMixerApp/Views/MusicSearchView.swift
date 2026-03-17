@@ -101,7 +101,9 @@ struct MusicSearchView: View {
                     TrackRow(track: track) {
                         spotifyService.currentTrack = track
                         if let url = track.previewURL {
-                            audioEngine.loadAndPlay(url: url)
+                            audioEngine.loadAndPlay(url: url,
+                                                    title: track.name,
+                                                    artist: track.artistName)
                         }
                     }
                 }
@@ -157,7 +159,9 @@ struct TrackRow: View {
                     .font(.caption2.monospacedDigit())
                     .foregroundColor(.secondary)
 
-                if isCurrentTrack {
+                if isCurrentTrack && audioEngine.isLoadingPreview {
+                    ProgressView().frame(width: 28, height: 28)
+                } else if isCurrentTrack {
                     Button { audioEngine.pauseResume() } label: {
                         Image(systemName: audioEngine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.title2)
@@ -174,7 +178,7 @@ struct TrackRow: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .onTapGesture { onPlay() }
+        .onTapGesture { if !audioEngine.isLoadingPreview { onPlay() } }
     }
 }
 

@@ -59,6 +59,8 @@ final class SpotifyRemoteService: NSObject, ObservableObject {
     // MARK: – Private
 
     private var appRemote: SPTAppRemote?
+    /// Incremented on every track change; stale artwork callbacks are discarded.
+    private var artworkGeneration = 0
 
     // MARK: – Lifecycle
 
@@ -187,6 +189,7 @@ extension SpotifyRemoteService: SPTAppRemotePlayerStateDelegate {
             self.playbackPosition = Double(state.playbackPosition) / 1000.0
 
             let t = state.track
+            self.artworkGeneration += 1
             self.currentTrack = RemoteTrackInfo(
                 uri:        t.uri,
                 name:       t.name,
@@ -194,17 +197,18 @@ extension SpotifyRemoteService: SPTAppRemotePlayerStateDelegate {
                 album:      t.album.name,
                 durationMs: Int(t.duration)
             )
-            self.fetchArtwork(for: t)
+            self.fetchArtwork(for: t, generation: self.artworkGeneration)
         }
     }
 
-    private func fetchArtwork(for track: SPTAppRemoteTrack) {
+    private func fetchArtwork(for track: SPTAppRemoteTrack, generation: Int) {
         appRemote?.imageAPI?.fetchImage(
             forItem: track,
             with: CGSize(width: 120, height: 120)
         ) { [weak self] result, _ in
-            guard let image = result as? UIImage else { return }
-            DispatchQueue.main.async { self?.currentTrack?.artwork = image }
+            guard let self, let image = result as? UIImage,
+                  self.artworkGeneration == generation else { return }
+            DispatchQueue.main.async { self.currentTrack?.artwork = image }
         }
     }
 }

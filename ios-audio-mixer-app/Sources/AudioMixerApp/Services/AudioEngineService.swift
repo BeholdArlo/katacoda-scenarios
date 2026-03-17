@@ -1,5 +1,6 @@
 import AVFoundation
 import Combine
+import MediaPlayer
 
 /// Core audio mixing engine.
 ///
@@ -21,6 +22,7 @@ final class AudioEngineService: ObservableObject {
         didSet { spotifyPlayer.pan = spotifyPan }
     }
     @Published var isPlaying: Bool = false
+    @Published var isLoadingPreview = false   // true during network download
     @Published var playbackError: String?
     @Published var currentTrackDuration: Double = 0
     @Published var currentPlaybackTime: Double = 0
@@ -31,7 +33,7 @@ final class AudioEngineService: ObservableObject {
     //                        ▲
     //              volume & EQ applied here
 
-    private let engine       = AVAudioEngine()
+    private let engine        = AVAudioEngine()
     private let spotifyPlayer = AVAudioPlayerNode()
     private let spotifyMixer  = AVAudioMixerNode()
     private let spotifyEQ     = AVAudioUnitEQ(numberOfBands: 3)
@@ -40,6 +42,11 @@ final class AudioEngineService: ObservableObject {
     private var audioFile: AVAudioFile?
     private var playbackTimer: AnyCancellable?
     private var scheduledBuffer: AVAudioPCMBuffer?
+    private var currentTempURL: URL?          // deleted when a new preview loads or on stop
+    private var nowPlayingTitle: String?
+    private var nowPlayingArtist: String?
+
+    deinit { playbackTimer?.cancel() }
 
     // MARK: – Setup
 
@@ -108,50 +115,81 @@ final class AudioEngineService: ObservableObject {
     // MARK: – Playback
 
     /// Load and schedule a remote audio URL (e.g. Spotify 30-s preview MP3).
-    func loadAndPlay(url: URL) {
+    /// `title` and `artist` populate the lock-screen / control-center Now Playing card.
+    func loadAndPlay(url: URL, title: String? = nil, artist: String? = nil) {
         stopPlayback()
+        nowPlayingTitle  = title
+        nowPlayingArtist = artist
+        isLoadingPreview = true
 
         // Download to temp file so AVAudioFile can read it
-        let task = URLSession.shared.downloadTask(with: url) { [weak self] tempURL, _, error in
+        let task = URLSession.shared.downloadTask(with: url) { [weak self] tempURL, response, error in
             guard let self else { return }
+
+            let finish = { DispatchQueue.main.async { self.isLoadingPreview = false } }
+
             if let error {
-                DispatchQueue.main.async { self.playbackError = error.localizedDescription }
+                DispatchQueue.main.async {
+                    self.playbackError = error.localizedDescription
+                    finish()
+                }
                 return
             }
-            guard let tempURL else { return }
+            guard let tempURL else { finish(); return }
 
-            // Move to stable temp path with .mp3 extension
+            // Move to stable temp path with .mp3 extension, deleting the previous one
             let dest = FileManager.default.temporaryDirectory
                 .appendingPathComponent(UUID().uuidString + ".mp3")
+            if let old = self.currentTempURL { try? FileManager.default.removeItem(at: old) }
             try? FileManager.default.moveItem(at: tempURL, to: dest)
+            self.currentTempURL = dest
 
             do {
                 let file = try AVAudioFile(forReading: dest)
                 self.audioFile = file
+                let duration = Double(file.length) / file.processingFormat.sampleRate
                 DispatchQueue.main.async {
-                    self.currentTrackDuration = Double(file.length) / file.processingFormat.sampleRate
+                    self.currentTrackDuration = duration
                 }
-                self.scheduleFile(file)
+                self.scheduleFile(file, duration: duration)
             } catch {
                 DispatchQueue.main.async { self.playbackError = error.localizedDescription }
             }
+            finish()
         }
         task.resume()
     }
 
-    private func scheduleFile(_ file: AVAudioFile) {
+    private func scheduleFile(_ file: AVAudioFile, duration: Double) {
         guard engine.isRunning else { startEngine() }
 
         spotifyPlayer.scheduleFile(file, at: nil) { [weak self] in
             DispatchQueue.main.async {
                 self?.isPlaying = false
                 self?.currentPlaybackTime = 0
+                MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
             }
         }
         spotifyPlayer.play()
 
-        DispatchQueue.main.async { self.isPlaying = true }
+        DispatchQueue.main.async {
+            self.isPlaying = true
+            self.updateNowPlayingCenter(duration: duration)
+        }
         startPlaybackTimer()
+    }
+
+    /// Registers the current track with iOS so the lock screen and control
+    /// center show the correct title, artist, and scrubber position.
+    private func updateNowPlayingCenter(duration: Double) {
+        var info: [String: Any] = [
+            MPMediaItemPropertyPlaybackDuration:      duration,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: 0.0,
+            MPNowPlayingInfoPropertyPlaybackRate:     1.0,
+        ]
+        if let t = nowPlayingTitle  { info[MPMediaItemPropertyTitle]  = t }
+        if let a = nowPlayingArtist { info[MPMediaItemPropertyArtist] = a }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     func pauseResume() {
@@ -169,6 +207,11 @@ final class AudioEngineService: ObservableObject {
         playbackTimer?.cancel()
         isPlaying = false
         currentPlaybackTime = 0
+        if let old = currentTempURL {
+            try? FileManager.default.removeItem(at: old)
+            currentTempURL = nil
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     // MARK: – Progress timer

@@ -49,13 +49,21 @@ struct YouTubePlayerView: UIViewRepresentable {
                 window.stereoPanner.pan.value = \(pan);
             }
         """
-        wv.evaluateJavaScript(js, completionHandler: nil)
+        wv.evaluateJavaScript(js) { _, error in
+            #if DEBUG
+            if let error { print("[YT] vol/pan JS error:", error) }
+            #endif
+        }
 
         // Play/pause
         if isPlaying != coord.wasPlaying {
             coord.wasPlaying = isPlaying
             let cmd = isPlaying ? "window.ytPlayer.playVideo();" : "window.ytPlayer.pauseVideo();"
-            wv.evaluateJavaScript(cmd, completionHandler: nil)
+            wv.evaluateJavaScript(cmd) { _, error in
+                #if DEBUG
+                if let error { print("[YT] play/pause JS error:", error) }
+                #endif
+            }
         }
     }
 
