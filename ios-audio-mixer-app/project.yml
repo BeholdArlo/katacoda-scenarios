@@ -19,6 +19,15 @@ settings:
     IPHONEOS_DEPLOYMENT_TARGET: "16.0"
     DEVELOPMENT_TEAM: ""            # Fill in your Apple Developer Team ID
 
+# ── Swift Package dependencies ────────────────────────────────────────────────
+# SpotifyiOS: Official Spotify iOS SDK (App Remote + auth helpers).
+# Provides SPTAppRemote, SPTConfiguration, and related types used by
+# SpotifyRemoteService to connect to the installed, logged-in Spotify app.
+packages:
+  SpotifyiOS:
+    url: https://github.com/spotify/ios-sdk
+    from: "1.2.3"
+
 targets:
   AudioMixerApp:
     type: application
@@ -34,3 +43,6 @@ targets:
         INFOPLIST_FILE: Sources/AudioMixerApp/Info.plist
         CODE_SIGN_STYLE: Automatic
         ENABLE_PREVIEWS: YES
+    dependencies:
+      - package: SpotifyiOS
+        product: SpotifyiOS

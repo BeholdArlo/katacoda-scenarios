@@ -42,6 +42,15 @@
         <string>audio</string>
     </array>
 
+    <!-- Declare URL schemes the app can open via UIApplication.canOpenURL / open(_:).
+         Required for: Spotify App Remote connection, YouTube app URL scheme control,
+         and checking whether each app is installed on the device. -->
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>spotify</string>    <!-- Spotify app: App Remote connection + canOpenURL check -->
+        <string>youtube</string>    <!-- YouTube app: open video by ID via url scheme -->
+    </array>
+
     <!-- Custom URL scheme for Spotify OAuth callback -->
     <key>CFBundleURLTypes</key>
     <array>
