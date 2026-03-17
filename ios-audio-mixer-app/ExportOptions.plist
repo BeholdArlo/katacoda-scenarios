@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- ── Distribution method ──────────────────────────────────────────────
+         app-store   : upload to TestFlight / App Store (paid account required)
+         ad-hoc      : install on specific registered device UDIDs
+         development : unsigned/free-Apple-ID builds for SideStore / AltStore
+         ──────────────────────────────────────────────────────────────────── -->
+    <key>method</key>
+    <string>app-store</string>
+
+    <!-- Automatic signing: let Xcode + ASC API key create/renew certs and
+         provisioning profiles on Apple's servers. Required when using
+         -allowProvisioningUpdates in xcodebuild. -->
+    <key>signingStyle</key>
+    <string>automatic</string>
+
+    <!-- Let Xcode manage build number on each upload — avoids "CFBundleVersion
+         already exists" errors when re-running a workflow on the same commit. -->
+    <key>manageAppVersionAndBuildNumber</key>
+    <true/>
+
+    <!-- Include dSYM symbols so TestFlight crash reports are symbolicated
+         and readable in Xcode Organizer and App Store Connect. -->
+    <key>uploadSymbols</key>
+    <true/>
+
+    <!-- <none> disables app-thinning so the artifact runs on any iPhone.
+         Change to "thin-for-all-variants" for a full App Store submission. -->
+    <key>thinning</key>
+    <string>&lt;none&gt;</string>
+
+    <!-- Bitcode was deprecated in Xcode 14. Set to false to avoid a warning
+         about a feature that no longer exists in the toolchain. -->
+    <key>compileBitcode</key>
+    <false/>
+</dict>
+</plist>

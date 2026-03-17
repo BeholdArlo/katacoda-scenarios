@@ -1,0 +1,216 @@
+name: iOS Build & Distribute
+
+on:
+  push:
+    branches:
+      - main
+      - "claude/*"
+  workflow_dispatch:
+    inputs:
+      distribution:
+        description: "Distribution method: sidestore or testflight"
+        required: false
+        default: "sidestore"
+
+# Cancel in-progress runs on the same branch when a new push arrives.
+# Saves runner minutes when pushing rapidly from Codespaces or Working Copy.
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  XCODE_VERSION: "15.4"
+  SCHEME: "AudioMixerApp"
+  CONFIGURATION: "Release"
+  APP_SUBDIR: "ios-audio-mixer-app"
+  ARCHIVE_PATH: "${{ github.workspace }}/build/AudioMixerApp.xcarchive"
+  IPA_DIR: "${{ github.workspace }}/build/ipa"
+  DERIVED_DATA_PATH: "${{ github.workspace }}/DerivedData"
+
+jobs:
+  build:
+    name: Build, Archive & Package IPA
+    runs-on: macos-14
+
+    steps:
+      # ── 1. Checkout ───────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Select Xcode version ───────────────────────────────────────────────
+      - name: Select Xcode ${{ env.XCODE_VERSION }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer
+
+      # ── 3. Cache Homebrew / XcodeGen ─────────────────────────────────────────
+      - name: Cache Homebrew packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /usr/local/Cellar/xcodegen
+          key: homebrew-xcodegen-${{ runner.os }}-v1
+          restore-keys: homebrew-xcodegen-${{ runner.os }}-
+
+      - name: Install XcodeGen
+        run: |
+          if ! command -v xcodegen &>/dev/null; then
+            brew install xcodegen
+          else
+            echo "XcodeGen cached: $(xcodegen version)"
+          fi
+
+      # ── 4. Generate .xcodeproj from project.yml ───────────────────────────────
+      # DEVELOPMENT_TEAM is intentionally left empty — we build unsigned so that
+      # any developer can install via SideStore with their own free Apple ID.
+      # The `manageAppVersionAndBuildNumber` key in ExportOptions.plist handles
+      # build number incrementing if a paid TestFlight path is added later.
+      - name: Generate Xcode project
+        working-directory: ${{ env.APP_SUBDIR }}
+        run: xcodegen generate
+
+      # ── 5. Cache Swift Package Manager (SpotifyiOS ~30 MB XCFramework) ────────
+      - name: Cache Swift Package dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.APP_SUBDIR }}/SourcePackages
+          key: spm-${{ runner.os }}-${{ hashFiles('ios-audio-mixer-app/project.yml') }}-v1
+          restore-keys: spm-${{ runner.os }}-
+
+      # ── 6. Resolve SPM packages (separate step = early, clear error messages) ─
+      - name: Resolve Swift Package dependencies
+        working-directory: ${{ env.APP_SUBDIR }}
+        run: |
+          xcodebuild \
+            -resolvePackageDependencies \
+            -scheme "${{ env.SCHEME }}" \
+            -project "AudioMixerApp.xcodeproj" \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -derivedDataPath "${{ env.DERIVED_DATA_PATH }}"
+
+      # ── 7. Archive (unsigned) ─────────────────────────────────────────────────
+      # CODE_SIGNING_REQUIRED=NO / CODE_SIGN_IDENTITY="" / CODE_SIGNING_ALLOWED=NO
+      # produce a valid .xcarchive without any Apple ID or developer account.
+      # SideStore (or AltStore) re-signs the exported IPA with the user's free
+      # Apple ID on-device — no Mac, no paid account, no secrets required.
+      - name: Archive app (unsigned)
+        working-directory: ${{ env.APP_SUBDIR }}
+        run: |
+          xcodebuild archive \
+            -project "AudioMixerApp.xcodeproj" \
+            -scheme "${{ env.SCHEME }}" \
+            -configuration "${{ env.CONFIGURATION }}" \
+            -destination "generic/platform=iOS" \
+            -archivePath "${{ env.ARCHIVE_PATH }}" \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -derivedDataPath "${{ env.DERIVED_DATA_PATH }}" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_ALLOWED=NO \
+            | xcpretty --color --simple
+
+      # ── 8. Build IPA from archive .app bundle ─────────────────────────────────
+      # Standard iOS IPA structure: zip of a Payload/ directory containing the
+      # .app bundle. SideStore understands this format and re-signs on install.
+      - name: Create unsigned IPA
+        run: |
+          mkdir -p "${{ env.IPA_DIR }}/Payload"
+          cp -r "${{ env.ARCHIVE_PATH }}/Products/Applications/AudioMixerApp.app" \
+                "${{ env.IPA_DIR }}/Payload/"
+          cd "${{ env.IPA_DIR }}"
+          zip -r "AudioMixerApp.ipa" Payload/
+          rm -rf Payload
+          echo "IPA created:"
+          ls -lh AudioMixerApp.ipa
+
+      # ── 9. Upload IPA as workflow artifact ────────────────────────────────────
+      # Download from: github.com → Actions tab → this run → Artifacts section.
+      # Then install on iPhone via SideStore's + → Browse → select .ipa flow.
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AudioMixerApp-${{ github.sha }}
+          path: ${{ env.IPA_DIR }}/AudioMixerApp.ipa
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── 10. Optional TestFlight upload ───────────────────────────────────────
+      # Activate this path by adding these GitHub Secrets to the repo:
+      #   ASC_API_KEY_BASE64  – base64-encoded .p8 key from appstoreconnect.apple.com
+      #   ASC_API_KEY_ID      – Key ID (10-char string, same page)
+      #   ASC_API_ISSUER_ID   – Issuer ID (UUID, same page)
+      #   APPLE_TEAM_ID       – 10-char Team ID from developer.apple.com/account
+      #
+      # All four values are obtainable from iPhone Safari — no Mac required.
+      # When these secrets are set, the workflow signs the archive and uploads
+      # directly to TestFlight, which then sends an install notification to
+      # the TestFlight app on your iPhone.
+      - name: Set up App Store Connect API key
+        if: ${{ env.ASC_API_KEY_BASE64 != '' }}
+        id: asc_key
+        env:
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          ASC_KEY_PATH="${RUNNER_TEMP}/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8"
+          echo "$ASC_API_KEY_BASE64" | base64 --decode > "${ASC_KEY_PATH}"
+          echo "key_path=${ASC_KEY_PATH}" >> $GITHUB_OUTPUT
+          echo "::add-mask::${ASC_KEY_PATH}"
+
+      - name: Re-archive with signing for TestFlight
+        if: ${{ env.ASC_API_KEY_BASE64 != '' }}
+        env:
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        working-directory: ${{ env.APP_SUBDIR }}
+        run: |
+          # Inject team ID before re-generating for signed build
+          sed -i '' \
+            's/DEVELOPMENT_TEAM: ""/DEVELOPMENT_TEAM: "${{ secrets.APPLE_TEAM_ID }}"/' \
+            project.yml
+          xcodegen generate
+          xcodebuild archive \
+            -project "AudioMixerApp.xcodeproj" \
+            -scheme "${{ env.SCHEME }}" \
+            -configuration "${{ env.CONFIGURATION }}" \
+            -destination "generic/platform=iOS" \
+            -archivePath "${{ env.ARCHIVE_PATH }}-signed" \
+            -clonedSourcePackagesDirPath SourcePackages \
+            -derivedDataPath "${{ env.DERIVED_DATA_PATH }}" \
+            CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "${{ steps.asc_key.outputs.key_path }}" \
+            -authenticationKeyID "${{ secrets.ASC_API_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_API_ISSUER_ID }}" \
+            | xcpretty --color --simple
+
+      - name: Export IPA for TestFlight
+        if: ${{ env.ASC_API_KEY_BASE64 != '' }}
+        env:
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          mkdir -p "${{ env.IPA_DIR }}-tf"
+          xcodebuild -exportArchive \
+            -archivePath "${{ env.ARCHIVE_PATH }}-signed" \
+            -exportOptionsPlist "${{ env.APP_SUBDIR }}/ExportOptions.plist" \
+            -exportPath "${{ env.IPA_DIR }}-tf" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "${{ steps.asc_key.outputs.key_path }}" \
+            -authenticationKeyID "${{ secrets.ASC_API_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_API_ISSUER_ID }}"
+
+      - name: Upload to TestFlight
+        if: ${{ env.ASC_API_KEY_BASE64 != '' }}
+        env:
+          ASC_API_KEY_BASE64: ${{ secrets.ASC_API_KEY_BASE64 }}
+        run: |
+          xcrun altool \
+            --upload-app \
+            --type ios \
+            --file "${{ env.IPA_DIR }}-tf/AudioMixerApp.ipa" \
+            --apiKey "${{ secrets.ASC_API_KEY_ID }}" \
+            --apiIssuer "${{ secrets.ASC_API_ISSUER_ID }}"
+
+      - name: Remove API key file
+        if: always()
+        run: |
+          KEY="${RUNNER_TEMP}/AuthKey_${{ secrets.ASC_API_KEY_ID }}.p8"
+          [ -f "$KEY" ] && rm -f "$KEY" && echo "Key file removed." || true
