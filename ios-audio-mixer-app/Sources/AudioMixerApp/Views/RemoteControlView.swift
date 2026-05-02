@@ -2,93 +2,81 @@ import SwiftUI
 
 // MARK: – Root view
 
-/// "Remote" tab — control the native YouTube app and Spotify app you're
-/// already logged into, and crossfade between them.
-///
-/// Crossfader behaviour:
-///   Left  (0.0) → embedded YouTube at full volume, Spotify silent
-///   Center(0.5) → both sources at ~70% (equal-power law)
-///   Right (1.0) → Spotify at full volume, YouTube silent
-///
-/// The YouTube side drives the **embedded WKWebView player** (always visible
-/// at the top of the screen) via the `ytVolume` binding, giving real JS-level
-/// volume control.  The Spotify side calls `setVolume()` on the App Remote,
-/// controlling the Spotify app's output independently of system volume.
 struct RemoteControlView: View {
     @EnvironmentObject var spotifyRemote: SpotifyRemoteService
     @EnvironmentObject var nowPlaying:    NowPlayingMonitor
 
-    /// Controls the embedded WKWebView YouTube player volume (0–100).
     @Binding var ytVolume: Double
 
-    /// 0.0 = full YouTube · 0.5 = equal power · 1.0 = full Spotify
     @State private var crossfader: Double = 0.5
-
-    /// Shown once; dismissed permanently via AppStorage.
     @AppStorage("remoteCapBannerDismissed") private var bannerDismissed = false
 
     var body: some View {
-        ScrollView {
+        ScrollView(showsIndicators: false) {
             VStack(spacing: 16) {
-                Text("Remote Control")
-                    .font(.title2.bold())
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Remote")
+                            .font(.title2.weight(.black))
+                            .neon(DS.Color.acidYellow)
+                        Text("Control YouTube & Spotify apps")
+                            .font(.caption)
+                            .foregroundColor(DS.Color.cream.opacity(0.45))
+                    }
+                    Spacer()
+                }
 
-                if !bannerDismissed { capabilityBanner.padding(.horizontal) }
+                if !bannerDismissed { infoBanner }
 
-                // YouTube embedded-player deck
                 YouTubeAppDeck(
                     nowPlaying: nowPlaying,
-                    crossfaderVolume: ytCurve(crossfader)   // real volume, 0–1
+                    crossfaderVolume: ytCurve(crossfader)
                 )
-                .padding(.horizontal)
 
-                // DJ crossfader
                 CrossfaderView(value: $crossfader)
-                    .padding(.horizontal)
                     .onChange(of: crossfader, applyCrossfade)
 
-                // Spotify app deck
                 SpotifyAppDeck()
-                    .padding(.horizontal)
+
+                Spacer(minLength: 20)
             }
-            .padding(.bottom, 32)
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 30)
         }
     }
 
-    // MARK: – Equal-power crossfade
+    // MARK: – Equal-power curves
 
-    /// cos curve: 1.0 → ~0.707 → 0.0  (YouTube side)
     private func ytCurve(_ x: Double) -> Double { cos(x * .pi / 2) }
-    /// sin curve: 0.0 → ~0.707 → 1.0  (Spotify side)
     private func spCurve(_ x: Double) -> Double { sin(x * .pi / 2) }
 
     private func applyCrossfade(_ old: Double, _ x: Double) {
-        // YouTube: drives the always-visible embedded WKWebView player
         ytVolume = 100 * ytCurve(x)
-        // Spotify: drives the Spotify app's own volume via App Remote API
-        if spotifyRemote.isConnected {
-            spotifyRemote.setSpotifyVolume(spCurve(x))
-        }
+        if spotifyRemote.isConnected { spotifyRemote.setSpotifyVolume(spCurve(x)) }
     }
 
-    // MARK: – One-time capability banner
+    // MARK: – Info banner
 
-    private var capabilityBanner: some View {
-        HStack(alignment: .top, spacing: 8) {
+    private var infoBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
             Image(systemName: "info.circle.fill")
-                .foregroundColor(.blue).font(.caption).padding(.top, 1)
-            Text("Crossfader controls the **embedded player** (YouTube) and Spotify's own volume via App Remote. For EQ and stereo pan, use the Mixer tab.")
-                .font(.caption).foregroundColor(.secondary)
+                .foregroundColor(DS.Color.acidYellow)
+                .glow(DS.Color.acidYellow, radius: 4)
+                .font(.caption)
+                .padding(.top, 1)
+            Text("Crossfader controls the embedded YouTube player and Spotify's own volume via App Remote. Use the Mixer tab for EQ and stereo pan.")
+                .font(.caption)
+                .foregroundColor(DS.Color.cream.opacity(0.7))
             Spacer()
             Button { bannerDismissed = true } label: {
-                Image(systemName: "xmark").font(.caption2).foregroundColor(.secondary)
+                Image(systemName: "xmark")
+                    .font(.caption2)
+                    .foregroundColor(DS.Color.cream.opacity(0.4))
             }
         }
-        .padding(10)
-        .background(Color(.systemGray6))
-        .cornerRadius(10)
+        .padding(12)
+        .glassCard(cornerRadius: 12)
     }
 }
 
@@ -96,83 +84,115 @@ struct RemoteControlView: View {
 
 struct YouTubeAppDeck: View {
     @ObservedObject var nowPlaying: NowPlayingMonitor
-    /// Actual crossfader gain for this channel (0–1). Now real, not visual-only.
     let crossfaderVolume: Double
 
     var body: some View {
         VStack(spacing: 12) {
-            deckHeader
+            // Header
+            HStack(spacing: 8) {
+                Image(systemName: "play.rectangle.fill")
+                    .foregroundColor(.red)
+                    .glow(.red, radius: 6)
+                Text("YouTube")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(DS.Color.cream)
+                Spacer()
+                HStack(spacing: 4) {
+                    Image(systemName: "speaker.wave.2")
+                        .font(.caption)
+                    Text("\(Int(crossfaderVolume * 100))%")
+                        .font(.caption.monospacedDigit())
+                }
+                .foregroundColor(DS.Color.cream.opacity(0.5))
+            }
+
             if nowPlaying.isActive, let title = nowPlaying.title {
                 nowPlayingContent(title: title)
             } else {
                 idleContent
             }
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(16)
-    }
-
-    private var deckHeader: some View {
-        HStack {
-            Image(systemName: "play.rectangle.fill").foregroundColor(.red)
-            Text("YouTube").font(.headline)
-            Spacer()
-            HStack(spacing: 4) {
-                Image(systemName: "speaker.wave.2").font(.caption)
-                Text("\(Int(crossfaderVolume * 100))%").font(.caption.monospacedDigit())
-            }
-            .foregroundColor(.secondary)
-        }
+        .padding(16)
+        .glassCard(cornerRadius: 18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.red.opacity(0.25), lineWidth: 1)
+        )
     }
 
     private func nowPlayingContent(title: String) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             HStack(spacing: 12) {
                 artworkView
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.subheadline.weight(.semibold)).lineLimit(2)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(DS.Color.cream)
+                        .lineLimit(2)
                     if let artist = nowPlaying.artist {
-                        Text(artist).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                        Text(artist)
+                            .font(.caption)
+                            .foregroundColor(DS.Color.cream.opacity(0.5))
+                            .lineLimit(1)
                     }
                 }
                 Spacer()
                 Text(nowPlaying.elapsedFormatted)
-                    .font(.caption2.monospacedDigit()).foregroundColor(.secondary)
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(DS.Color.cream.opacity(0.4))
             }
+
             ProgressBar(ratio: nowPlaying.progressRatio, color: .red)
-            Button {
-                nowPlaying.openYouTubeApp()
-            } label: {
+
+            Button { nowPlaying.openYouTubeApp() } label: {
                 Label("Open YouTube App", systemImage: "arrow.up.right.square")
-                    .font(.caption).frame(maxWidth: .infinity)
+                    .font(.caption.weight(.semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .foregroundColor(.red)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.red.opacity(0.4), lineWidth: 1)
+                    )
             }
-            .buttonStyle(.bordered).tint(.red)
         }
     }
 
     private var idleContent: some View {
         VStack(spacing: 10) {
             Text("YouTube app is not playing")
-                .font(.caption).foregroundColor(.secondary)
+                .font(.caption)
+                .foregroundColor(DS.Color.cream.opacity(0.4))
             Button { nowPlaying.openYouTubeApp() } label: {
                 Label("Open YouTube App", systemImage: "arrow.up.right.square")
+                    .font(.caption.weight(.semibold))
                     .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .foregroundColor(.red)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .strokeBorder(Color.red.opacity(0.4), lineWidth: 1)
+                    )
             }
-            .buttonStyle(.bordered).tint(.red)
             Text("Start a video in the YouTube app — this deck detects it automatically.")
-                .font(.caption2).foregroundColor(.secondary).multilineTextAlignment(.center)
+                .font(.caption2)
+                .foregroundColor(DS.Color.cream.opacity(0.35))
+                .multilineTextAlignment(.center)
         }
     }
 
     @ViewBuilder private var artworkView: some View {
         if let img = nowPlaying.artwork {
-            Image(uiImage: img).resizable().scaledToFill()
-                .frame(width: 52, height: 52).cornerRadius(8).clipped()
-        } else {
-            RoundedRectangle(cornerRadius: 8).fill(Color(.systemGray5))
+            Image(uiImage: img)
+                .resizable().scaledToFill()
                 .frame(width: 52, height: 52)
-                .overlay(Image(systemName: "play.rectangle").foregroundColor(.secondary))
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .glow(.red, radius: 4)
+        } else {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(DS.Color.deepViolet)
+                .frame(width: 52, height: 52)
+                .overlay(Image(systemName: "play.rectangle").foregroundColor(DS.Color.cream.opacity(0.3)))
         }
     }
 }
@@ -184,38 +204,51 @@ struct SpotifyAppDeck: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "music.note").foregroundColor(.green)
-                Text("Spotify").font(.headline)
+            HStack(spacing: 8) {
+                Image(systemName: "music.note.list")
+                    .foregroundColor(DS.Color.teal)
+                    .glow(DS.Color.teal, radius: 6)
+                Text("Spotify")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(DS.Color.cream)
                 Spacer()
                 connectionBadge
             }
+
             if spotifyRemote.isConnected { connectedContent } else { disconnectedContent }
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(16)
+        .padding(16)
+        .glassCard(cornerRadius: 18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(DS.Color.teal.opacity(0.25), lineWidth: 1)
+        )
     }
 
     private var connectionBadge: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 5) {
             Circle()
-                .fill(spotifyRemote.isConnected ? Color.green : Color(.systemGray3))
-                .frame(width: 8, height: 8)
+                .fill(spotifyRemote.isConnected ? DS.Color.teal : DS.Color.cream.opacity(0.2))
+                .frame(width: 7, height: 7)
+                .glow(spotifyRemote.isConnected ? DS.Color.teal : .clear, radius: 4)
             Text(spotifyRemote.isConnected ? "Connected" : "Disconnected")
                 .font(.caption)
-                .foregroundColor(spotifyRemote.isConnected ? .green : .secondary)
+                .foregroundColor(spotifyRemote.isConnected ? DS.Color.teal : DS.Color.cream.opacity(0.4))
         }
     }
 
     private var connectedContent: some View {
         VStack(spacing: 12) {
             if let track = spotifyRemote.currentTrack { trackRow(track) }
-            else { Text("Waiting for Spotify to start…").font(.caption).foregroundColor(.secondary) }
+            else {
+                Text("Waiting for Spotify to start…")
+                    .font(.caption)
+                    .foregroundColor(DS.Color.cream.opacity(0.4))
+            }
             transportControls
             spotifyVolumeSlider
             if let err = spotifyRemote.connectionError {
-                Text(err).font(.caption2).foregroundColor(.red)
+                Text(err).font(.caption2).foregroundColor(DS.Color.magenta)
             }
         }
     }
@@ -226,75 +259,108 @@ struct SpotifyAppDeck: View {
                 if let art = track.artwork {
                     Image(uiImage: art).resizable().scaledToFill()
                 } else {
-                    Color(.systemGray5).overlay(Image(systemName: "music.note").foregroundColor(.secondary))
+                    DS.Color.deepViolet
+                        .overlay(Image(systemName: "music.note").foregroundColor(DS.Color.cream.opacity(0.3)))
                 }
             }
-            .frame(width: 52, height: 52).cornerRadius(8).clipped()
+            .frame(width: 52, height: 52)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .glow(DS.Color.teal, radius: 3)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(track.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text(track.artist).font(.caption).foregroundColor(.secondary).lineLimit(1)
-                Text(track.album).font(.caption2).foregroundColor(.secondary).lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(track.name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(DS.Color.cream)
+                    .lineLimit(1)
+                Text(track.artist)
+                    .font(.caption)
+                    .foregroundColor(DS.Color.cream.opacity(0.5))
+                    .lineLimit(1)
+                Text(track.album)
+                    .font(.caption2)
+                    .foregroundColor(DS.Color.cream.opacity(0.35))
+                    .lineLimit(1)
             }
             Spacer()
-            Text(track.formattedDuration).font(.caption2.monospacedDigit()).foregroundColor(.secondary)
+            Text(track.formattedDuration)
+                .font(.caption2.monospacedDigit())
+                .foregroundColor(DS.Color.cream.opacity(0.4))
         }
     }
 
     private var transportControls: some View {
-        HStack(spacing: 32) {
-            Button { spotifyRemote.skipPrevious() } label: {
-                Image(systemName: "backward.fill").font(.title2)
-            }
-            .foregroundColor(.primary)
+        HStack(spacing: 36) {
+            transportButton(icon: "backward.fill") { spotifyRemote.skipPrevious() }
+
             Button { spotifyRemote.togglePlayPause() } label: {
                 Image(systemName: spotifyRemote.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                    .font(.system(size: 44)).foregroundColor(.green)
+                    .font(.system(size: 46))
+                    .foregroundColor(DS.Color.teal)
+                    .glow(DS.Color.teal, radius: 10)
             }
-            Button { spotifyRemote.skipNext() } label: {
-                Image(systemName: "forward.fill").font(.title2)
-            }
-            .foregroundColor(.primary)
+
+            transportButton(icon: "forward.fill") { spotifyRemote.skipNext() }
         }
         .frame(maxWidth: .infinity)
     }
 
-    /// Independent Spotify volume — does not affect system volume.
+    private func transportButton(icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: icon)
+                .font(.title2)
+                .foregroundColor(DS.Color.cream.opacity(0.8))
+                .padding(10)
+                .background(Color.white.opacity(0.07))
+                .clipShape(Circle())
+        }
+    }
+
     private var spotifyVolumeSlider: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Label("Spotify Volume", systemImage: "speaker.wave.2")
-                    .font(.caption).foregroundColor(.secondary)
+                    .font(.caption2)
+                    .foregroundColor(DS.Color.cream.opacity(0.5))
                 Spacer()
                 Text("\(Int(spotifyRemote.spotifyVolume * 100))%")
-                    .font(.caption.monospacedDigit()).foregroundColor(.secondary)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundColor(DS.Color.teal)
             }
-            Slider(
+            CustomGradientSlider(
                 value: Binding(
                     get: { spotifyRemote.spotifyVolume },
                     set: { spotifyRemote.setSpotifyVolume($0) }
                 ),
-                in: 0...1
+                range: 0...1,
+                gradient: LinearGradient(colors: [DS.Color.deepViolet, DS.Color.teal], startPoint: .leading, endPoint: .trailing),
+                thumbColor: DS.Color.teal
             )
-            .accentColor(.green)
         }
     }
 
     private var disconnectedContent: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             Text(spotifyRemote.isSpotifyInstalled
                  ? "Connect to your logged-in Spotify app for full-track playback and crossfader control."
                  : "Spotify app is not installed on this device.")
-                .font(.caption).foregroundColor(.secondary).multilineTextAlignment(.center)
+                .font(.caption)
+                .foregroundColor(DS.Color.cream.opacity(0.55))
+                .multilineTextAlignment(.center)
+
             if spotifyRemote.isSpotifyInstalled {
                 Button { spotifyRemote.connectIfNeeded() } label: {
                     Label("Connect to Spotify App", systemImage: "link")
-                        .frame(maxWidth: .infinity).padding(.vertical, 4)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                        .foregroundColor(DS.Color.void)
+                        .background(DS.Color.teal)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .glow(DS.Color.teal, radius: 8)
                 }
-                .buttonStyle(.borderedProminent).tint(.green)
             }
             if let err = spotifyRemote.connectionError {
-                Text(err).font(.caption2).foregroundColor(.red).multilineTextAlignment(.center)
+                Text(err).font(.caption2).foregroundColor(DS.Color.magenta).multilineTextAlignment(.center)
             }
         }
     }
@@ -309,58 +375,120 @@ struct CrossfaderView: View {
     @State private var didCenterSnap = false
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 14) {
+            // Labels row
             HStack {
-                Image(systemName: "play.rectangle.fill").foregroundColor(.red).font(.caption)
+                Label("YouTube", systemImage: "play.rectangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(.red)
+                    .glow(.red, radius: 3)
                 Spacer()
-                Text("Crossfader").font(.headline)
+                Text("Crossfader")
+                    .font(.headline.weight(.bold))
+                    .foregroundColor(DS.Color.cream)
                 Spacer()
-                Image(systemName: "music.note").foregroundColor(.green).font(.caption)
+                Label("Spotify", systemImage: "music.note.list")
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(DS.Color.teal)
+                    .glow(DS.Color.teal, radius: 3)
             }
 
-            ZStack {
-                LinearGradient(
-                    colors: [.red.opacity(0.35), .clear, .green.opacity(0.35)],
-                    startPoint: .leading, endPoint: .trailing
-                )
-                .frame(height: 10).cornerRadius(5)
+            // Custom gradient track + thumb
+            CrossfaderTrack(value: $value, didCenterSnap: $didCenterSnap, haptic: haptic)
 
-                Slider(value: $value, in: 0...1)
-                    .accentColor(.white)
-                    .onChange(of: value) { _, v in
-                        // Haptic snap when crossing the centre point
-                        let nearCenter = abs(v - 0.5) < 0.02
-                        if nearCenter && !didCenterSnap {
-                            haptic.impactOccurred()
-                            didCenterSnap = true
-                        } else if !nearCenter {
-                            didCenterSnap = false
-                        }
-                    }
-            }
-
+            // Volume readouts
             HStack {
-                Text("YouTube").font(.caption2).foregroundColor(.red)
+                Text("YT \(Int(cos(value * .pi / 2) * 100))%")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(.red.opacity(0.7))
                 Spacer()
                 if abs(value - 0.5) < 0.04 {
-                    Text("50 / 50").font(.caption2.bold()).foregroundColor(.secondary)
+                    Text("50 / 50")
+                        .font(.caption2.weight(.bold))
+                        .foregroundColor(DS.Color.acidYellow)
+                        .glow(DS.Color.acidYellow, radius: 4)
                 }
                 Spacer()
-                Text("Spotify").font(.caption2).foregroundColor(.green)
+                Text("SP \(Int(sin(value * .pi / 2) * 100))%")
+                    .font(.caption2.monospacedDigit())
+                    .foregroundColor(DS.Color.teal.opacity(0.7))
             }
 
             Button("Reset to Center") {
                 withAnimation(.spring(response: 0.3)) { value = 0.5 }
             }
-            .font(.caption2).foregroundColor(.secondary)
+            .font(.caption)
+            .foregroundColor(DS.Color.cream.opacity(0.4))
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .cornerRadius(16)
+        .padding(16)
+        .glassCard(cornerRadius: 18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(DS.Color.acidYellow.opacity(0.15), lineWidth: 1)
+        )
     }
 }
 
-// MARK: – Shared progress bar
+private struct CrossfaderTrack: View {
+    @Binding var value: Double
+    @Binding var didCenterSnap: Bool
+    let haptic: UIImpactFeedbackGenerator
+
+    private let trackH: CGFloat = 8
+    private let thumbS: CGFloat = 28
+
+    var body: some View {
+        GeometryReader { geo in
+            let usable = geo.size.width - thumbS
+            let thumbX = thumbS / 2 + CGFloat(value) * usable
+
+            ZStack(alignment: .leading) {
+                // Track background
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.red.opacity(0.35), DS.Color.cream.opacity(0.15), DS.Color.teal.opacity(0.35)],
+                            startPoint: .leading, endPoint: .trailing
+                        )
+                    )
+                    .frame(height: trackH)
+
+                // Center notch
+                Capsule()
+                    .fill(DS.Color.acidYellow.opacity(0.5))
+                    .frame(width: 2, height: trackH * 1.5)
+                    .offset(x: geo.size.width / 2 - 1)
+
+                // Thumb
+                Circle()
+                    .fill(DS.Color.cream)
+                    .frame(width: thumbS, height: thumbS)
+                    .glow(abs(value - 0.5) < 0.04 ? DS.Color.acidYellow : DS.Color.cream.opacity(0.5), radius: 8)
+                    .offset(x: thumbX - thumbS / 2)
+            }
+            .frame(height: thumbS)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { drag in
+                        let raw = Double((drag.location.x - thumbS / 2) / usable)
+                        var snapped = raw.clamped(to: 0...1)
+                        // Center snap at ±2%
+                        if abs(snapped - 0.5) < 0.02 {
+                            snapped = 0.5
+                            if !didCenterSnap { haptic.impactOccurred(); didCenterSnap = true }
+                        } else {
+                            didCenterSnap = false
+                        }
+                        value = snapped
+                    }
+            )
+        }
+        .frame(height: thumbS)
+    }
+}
+
+// MARK: – Progress bar (reused by YouTube deck)
 
 struct ProgressBar: View {
     let ratio: Double
@@ -369,10 +497,13 @@ struct ProgressBar: View {
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color(.systemGray4)).frame(height: 3)
+                Capsule()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(height: 3)
                 Capsule()
                     .fill(color)
-                    .frame(width: geo.size.width * CGFloat(ratio), height: 3)
+                    .frame(width: geo.size.width * CGFloat(min(ratio, 1)), height: 3)
+                    .glow(color, radius: 3)
             }
         }
         .frame(height: 3)
@@ -385,8 +516,6 @@ struct ProgressBar: View {
     RemoteControlView(ytVolume: .constant(80))
         .environmentObject(SpotifyRemoteService())
         .environmentObject(NowPlayingMonitor())
-}
-
-#Preview("Crossfader") {
-    CrossfaderView(value: .constant(0.5)).padding()
+        .background(DS.Color.bgGradient.ignoresSafeArea())
+        .preferredColorScheme(.dark)
 }

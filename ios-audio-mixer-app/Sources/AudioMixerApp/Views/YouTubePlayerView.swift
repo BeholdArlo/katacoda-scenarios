@@ -211,26 +211,36 @@ struct YouTubeSection: View {
     var body: some View {
         VStack(spacing: 0) {
             // URL / Video-ID input bar
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 Image(systemName: "play.rectangle.fill")
                     .foregroundColor(.red)
                     .font(.title3)
+                    .glow(.red, radius: 6)
 
                 TextField("Paste YouTube URL or video ID", text: $urlInput)
+                    .foregroundColor(DS.Color.cream)
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
                     .onSubmit { loadVideoFromInput() }
-                    .padding(8)
-                    .background(Color(.systemGray6))
-                    .cornerRadius(8)
+
+                if !urlInput.isEmpty {
+                    Button { urlInput = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(DS.Color.cream.opacity(0.4))
+                    }
+                }
 
                 Button(action: loadVideoFromInput) {
                     Image(systemName: "arrow.right.circle.fill")
                         .font(.title2)
                         .foregroundColor(.red)
+                        .glow(.red, radius: 4)
                 }
             }
-            .padding(.horizontal)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .glassCard(cornerRadius: 12)
+            .padding(.horizontal, 12)
             .padding(.vertical, 8)
 
             // Player
@@ -240,9 +250,14 @@ struct YouTubeSection: View {
                 pan:     $ytPan,
                 isPlaying: $isPlaying
             )
-            .frame(height: 220)
-            .cornerRadius(12)
-            .padding(.horizontal)
+            .frame(height: 210)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(Color.red.opacity(0.3), lineWidth: 1)
+            )
+            .glow(.red, radius: 6)
+            .padding(.horizontal, 12)
         }
     }
 

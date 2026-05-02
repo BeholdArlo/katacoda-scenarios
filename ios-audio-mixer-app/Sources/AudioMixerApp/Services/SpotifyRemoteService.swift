@@ -62,14 +62,19 @@ final class SpotifyRemoteService: NSObject, ObservableObject {
     /// Incremented on every track change; stale artwork callbacks are discarded.
     private var artworkGeneration = 0
 
+    // Injected at launch from AppConfig — no code editing required.
+    var clientID: String = ""
+
+    private static let redirectURI = "audiomixer://spotify-callback"
+
     // MARK: – Lifecycle
 
     func setup() {
         isSpotifyInstalled = UIApplication.shared.canOpenURL(URL(string: "spotify://")!)
 
         let config = SPTConfiguration(
-            clientID: SpotifyAPIService.Config.clientID,
-            redirectURL: URL(string: SpotifyAPIService.Config.redirectURI)!
+            clientID: clientID,
+            redirectURL: URL(string: Self.redirectURI)!
         )
         // Empty playURI = reconnect without forcing a new track to play
         config.playURI = ""

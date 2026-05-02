@@ -5,6 +5,8 @@ on:
     branches:
       - main
       - "claude/*"
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       distribution:
@@ -132,6 +134,37 @@ jobs:
           path: ${{ env.IPA_DIR }}/AudioMixerApp.ipa
           retention-days: 30
           if-no-files-found: error
+
+      # ── 10. Attach IPA to GitHub Release (when triggered by a release event) ──
+      # Creates the permanent download URL used by docs/source.json and the
+      # install landing page QR code:
+      #   https://github.com/USER/REPO/releases/latest/download/AudioMixerApp.ipa
+      - name: Upload IPA to GitHub Release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.IPA_DIR }}/AudioMixerApp.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 11. Update AltStore source.json version on release ────────────────────
+      # Bumps the version and downloadURL in docs/source.json so SideStore/AltStore
+      # users see an update notification automatically.
+      - name: Update AltStore source.json
+        if: github.event_name == 'release'
+        run: |
+          VERSION="${{ github.event.release.tag_name }}"
+          VERSION="${VERSION#v}"   # strip leading 'v' if present
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.event.release.tag_name }}/AudioMixerApp.ipa"
+          jq --arg v "$VERSION" --arg d "$DATE" --arg url "$DOWNLOAD_URL" \
+             '.apps[0].versions[0] |= {version: $v, date: $d, localizedDescription: "See GitHub release notes.", downloadURL: $url, size: 0, minOSVersion: "16.0"}' \
+             docs/source.json > docs/source.tmp.json && mv docs/source.tmp.json docs/source.json
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/source.json
+          git commit -m "chore: bump AltStore source to $VERSION"
+          git push origin HEAD:main
 
       # ── 10. Optional TestFlight upload ───────────────────────────────────────
       # Activate this path by adding these GitHub Secrets to the repo:

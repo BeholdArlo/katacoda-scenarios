@@ -19,13 +19,17 @@ import Combine
 @MainActor
 final class SpotifyAPIService: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
 
-    // MARK: – Configuration (fill in your Spotify Developer Dashboard values)
+    // MARK: – Configuration
 
-    struct Config {
-        static let clientID     = "YOUR_SPOTIFY_CLIENT_ID"
-        static let redirectURI  = "audiomixer://spotify-callback"
-        static let scopes       = "user-read-playback-state user-modify-playback-state streaming"
+    // clientID is injected at runtime from AppConfig (UserDefaults) — no code editing required.
+    var clientID: String = ""
+
+    private enum Config {
+        static let redirectURI = "audiomixer://spotify-callback"
+        static let scopes      = "user-read-playback-state user-modify-playback-state streaming"
     }
+
+    var onNeedsClientID: (() -> Void)?
 
     // MARK: – Published state
 
@@ -60,8 +64,8 @@ final class SpotifyAPIService: NSObject, ObservableObject, ASWebAuthenticationPr
     // MARK: – Auth Flow
 
     func authenticate() {
-        guard Config.clientID != "YOUR_SPOTIFY_CLIENT_ID" else {
-            authError = "Set Config.clientID in SpotifyAPIService.swift before authenticating."
+        guard !clientID.trimmingCharacters(in: .whitespaces).isEmpty else {
+            onNeedsClientID?()
             return
         }
         let verifier = generateCodeVerifier()
@@ -70,7 +74,7 @@ final class SpotifyAPIService: NSObject, ObservableObject, ASWebAuthenticationPr
 
         var comps = URLComponents(string: "https://accounts.spotify.com/authorize")!
         comps.queryItems = [
-            URLQueryItem(name: "client_id",             value: Config.clientID),
+            URLQueryItem(name: "client_id",             value: clientID),
             URLQueryItem(name: "response_type",         value: "code"),
             URLQueryItem(name: "redirect_uri",          value: Config.redirectURI),
             URLQueryItem(name: "scope",                 value: Config.scopes),
@@ -115,7 +119,7 @@ final class SpotifyAPIService: NSObject, ObservableObject, ASWebAuthenticationPr
             "grant_type":    "authorization_code",
             "code":          code,
             "redirect_uri":  Config.redirectURI,
-            "client_id":     Config.clientID,
+            "client_id":     clientID,
             "code_verifier": verifier,
         ].percentEncoded()
         req.httpBody = body
@@ -142,7 +146,7 @@ final class SpotifyAPIService: NSObject, ObservableObject, ASWebAuthenticationPr
         let body = [
             "grant_type":    "refresh_token",
             "refresh_token": rt,
-            "client_id":     Config.clientID,
+            "client_id":     clientID,
         ].percentEncoded()
         req.httpBody = body
 

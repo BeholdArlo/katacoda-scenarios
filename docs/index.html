@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AudioMixer — YouTube + Spotify, One Glorious Mix</title>
+  <style>
+    :root {
+      --void:       #0D0014;
+      --deep:       #1F0040;
+      --orange:     #FF5500;
+      --magenta:    #FF0066;
+      --yellow:     #FFE500;
+      --teal:       #00FFBA;
+      --cream:      #FFF8E7;
+      --glass:      rgba(255,255,255,0.06);
+      --glass-edge: rgba(255,255,255,0.12);
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: linear-gradient(160deg, var(--void) 0%, var(--deep) 100%);
+      color: var(--cream);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* ── Glow radials ── */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -200px; left: -200px;
+      width: 600px; height: 600px;
+      background: radial-gradient(circle, rgba(255,85,0,.18) 0%, transparent 70%);
+      pointer-events: none;
+      animation: drift 12s ease-in-out infinite alternate;
+    }
+    body::after {
+      content: '';
+      position: fixed;
+      bottom: -200px; right: -200px;
+      width: 500px; height: 500px;
+      background: radial-gradient(circle, rgba(0,255,186,.12) 0%, transparent 70%);
+      pointer-events: none;
+      animation: drift 9s ease-in-out infinite alternate-reverse;
+    }
+    @keyframes drift {
+      from { transform: translate(0,0); }
+      to   { transform: translate(60px, 40px); }
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 760px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Hero ── */
+    .hero {
+      text-align: center;
+      padding: 80px 0 60px;
+      position: relative;
+    }
+    .hero-icon {
+      font-size: 72px;
+      filter: drop-shadow(0 0 24px var(--orange)) drop-shadow(0 0 60px var(--magenta));
+      margin-bottom: 24px;
+      display: block;
+      animation: pulse 3s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { filter: drop-shadow(0 0 20px var(--orange)) drop-shadow(0 0 50px var(--magenta)); }
+      50%      { filter: drop-shadow(0 0 40px var(--yellow)) drop-shadow(0 0 80px var(--teal)); }
+    }
+    .hero h1 {
+      font-size: clamp(48px, 8vw, 72px);
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--orange), var(--yellow), var(--teal));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.05;
+      text-shadow: none;
+    }
+    .hero p {
+      margin-top: 16px;
+      font-size: 20px;
+      color: rgba(255,248,231,.7);
+      font-weight: 400;
+    }
+
+    /* ── Badges ── */
+    .badges {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 28px;
+    }
+    .badge {
+      padding: 6px 16px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--glass-edge);
+      background: var(--glass);
+      color: rgba(255,248,231,.7);
+    }
+    .badge.orange { border-color: var(--orange); color: var(--orange); }
+    .badge.teal   { border-color: var(--teal);   color: var(--teal);   }
+    .badge.yellow { border-color: var(--yellow);  color: var(--yellow); }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--glass);
+      border: 1px solid var(--glass-edge);
+      border-radius: 24px;
+      padding: 32px;
+      margin: 24px 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(255,255,255,.04) 0%, transparent 60%);
+      pointer-events: none;
+    }
+    .card.orange-glow { box-shadow: 0 0 40px rgba(255,85,0,.15); border-color: rgba(255,85,0,.3); }
+    .card.teal-glow   { box-shadow: 0 0 40px rgba(0,255,186,.12); border-color: rgba(0,255,186,.3); }
+    .card.yellow-glow { box-shadow: 0 0 40px rgba(255,229,0,.1); border-color: rgba(255,229,0,.25); }
+
+    /* ── Section headings ── */
+    .section-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 999px;
+      margin-bottom: 12px;
+    }
+    .section-tag.orange { background: rgba(255,85,0,.15); color: var(--orange); border: 1px solid rgba(255,85,0,.3); }
+    .section-tag.teal   { background: rgba(0,255,186,.1); color: var(--teal);   border: 1px solid rgba(0,255,186,.3); }
+    .section-tag.yellow { background: rgba(255,229,0,.1); color: var(--yellow); border: 1px solid rgba(255,229,0,.3); }
+
+    .card h2 {
+      font-size: 26px;
+      font-weight: 800;
+      margin-bottom: 8px;
+    }
+    .card > p, .card > p.subtitle {
+      color: rgba(255,248,231,.6);
+      font-size: 15px;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    /* ── Steps ── */
+    .steps { list-style: none; display: flex; flex-direction: column; gap: 14px; }
+    .steps li {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      font-size: 15px;
+      line-height: 1.5;
+      color: rgba(255,248,231,.85);
+    }
+    .step-num {
+      min-width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    .step-num.orange { background: rgba(255,85,0,.2);  color: var(--orange); border: 1px solid rgba(255,85,0,.4); }
+    .step-num.teal   { background: rgba(0,255,186,.12); color: var(--teal);  border: 1px solid rgba(0,255,186,.3); }
+    .step-num.yellow { background: rgba(255,229,0,.1);  color: var(--yellow); border: 1px solid rgba(255,229,0,.3); }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 14px;
+      font-size: 16px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: transform .15s, box-shadow .15s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn:hover { transform: translateY(-2px); }
+    .btn.primary-orange {
+      background: var(--orange);
+      color: var(--void);
+      box-shadow: 0 4px 24px rgba(255,85,0,.4);
+    }
+    .btn.primary-orange:hover { box-shadow: 0 6px 36px rgba(255,85,0,.6); }
+    .btn.primary-teal {
+      background: var(--teal);
+      color: var(--void);
+      box-shadow: 0 4px 24px rgba(0,255,186,.3);
+    }
+    .btn.primary-teal:hover { box-shadow: 0 6px 36px rgba(0,255,186,.5); }
+    .btn.outline {
+      background: var(--glass);
+      color: var(--cream);
+      border: 1px solid var(--glass-edge);
+    }
+
+    /* ── QR block ── */
+    .qr-block {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .qr-placeholder {
+      width: 120px;
+      height: 120px;
+      background: rgba(255,255,255,.08);
+      border: 1px solid var(--glass-edge);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      color: rgba(255,248,231,.4);
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .qr-info { flex: 1; min-width: 160px; }
+    .qr-info p { color: rgba(255,248,231,.6); font-size: 14px; line-height: 1.5; }
+
+    /* ── Source URL box ── */
+    .source-box {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: rgba(255,255,255,.05);
+      border: 1px solid var(--glass-edge);
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+    .source-box code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+      color: var(--yellow);
+      word-break: break-all;
+      flex: 1;
+    }
+    .copy-btn {
+      padding: 6px 14px;
+      border-radius: 8px;
+      background: rgba(255,229,0,.12);
+      color: var(--yellow);
+      border: 1px solid rgba(255,229,0,.3);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s;
+      white-space: nowrap;
+    }
+    .copy-btn:hover { background: rgba(255,229,0,.2); }
+
+    /* ── Divider ── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--glass-edge);
+      margin: 8px 0;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 48px 0 60px;
+      color: rgba(255,248,231,.3);
+      font-size: 13px;
+    }
+    footer a { color: rgba(255,248,231,.5); text-decoration: none; }
+    footer a:hover { color: var(--teal); }
+
+    @media (max-width: 500px) {
+      .card { padding: 20px; border-radius: 18px; }
+      .hero { padding: 50px 0 40px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Hero ── -->
+<div class="container">
+  <div class="hero">
+    <span class="hero-icon">🎛️</span>
+    <h1>AudioMixer</h1>
+    <p>YouTube + Spotify.<br>One glorious mix.</p>
+    <div class="badges">
+      <span class="badge orange">Free</span>
+      <span class="badge teal">iOS 16+</span>
+      <span class="badge yellow">No Mac Required</span>
+      <span class="badge">Open Source</span>
+    </div>
+  </div>
+
+  <!-- ── Install Path A: For Everyone ── -->
+  <div class="card orange-glow">
+    <span class="section-tag orange">📱 For Everyone — The Easy Way</span>
+    <h2>Install in 5 minutes</h2>
+    <p class="subtitle">No computer needed. Just your iPhone and the free SideStore app.</p>
+
+    <ul class="steps">
+      <li>
+        <span class="step-num orange">1</span>
+        <span><strong>Install SideStore</strong> — visit <a href="https://sidestore.io" style="color:var(--orange)">sidestore.io</a> on your iPhone and follow their one-time setup. It's free and uses your Apple ID without a computer.</span>
+      </li>
+      <li>
+        <span class="step-num orange">2</span>
+        <span><strong>Scan the QR code below</strong> to download the AudioMixer IPA file to your iPhone.</span>
+      </li>
+      <li>
+        <span class="step-num orange">3</span>
+        <span><strong>Open SideStore</strong> → tap the <strong>+</strong> button → choose <strong>"Sideload IPA"</strong> → pick the file you just downloaded.</span>
+      </li>
+      <li>
+        <span class="step-num orange">4</span>
+        <span><strong>Done!</strong> AudioMixer appears on your Home Screen. Open it, swipe through the 3-screen setup, and mix.</span>
+      </li>
+    </ul>
+
+    <div class="qr-block" style="margin-top: 28px;">
+      <div class="qr-placeholder">
+        QR Code<br><span style="font-size:10px;opacity:.6">(generated after first GitHub Release)</span>
+      </div>
+      <div class="qr-info">
+        <p>Scan with your iPhone camera to download the latest <strong>AudioMixer.ipa</strong> directly to your device.</p>
+        <br>
+        <a href="https://github.com/BeholdArlo/katacoda-scenarios/releases/latest/download/AudioMixerApp.ipa"
+           class="btn primary-orange" style="font-size:14px; padding: 10px 20px;">
+          ⬇️ Direct Download IPA
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Install Path B: Power Users ── -->
+  <div class="card teal-glow">
+    <span class="section-tag teal">⚡ Power User — Auto-Updates</span>
+    <h2>AltStore / SideStore Source</h2>
+    <p class="subtitle">Add AudioMixer as a source in SideStore or AltStore. You'll get one-tap installs and automatic update notifications whenever a new version ships.</p>
+
+    <ul class="steps">
+      <li>
+        <span class="step-num teal">1</span>
+        <span>Open <strong>SideStore</strong> (or <strong>AltStore</strong>) on your iPhone.</span>
+      </li>
+      <li>
+        <span class="step-num teal">2</span>
+        <span>Go to <strong>Sources</strong> tab → tap <strong>+</strong></span>
+      </li>
+      <li>
+        <span class="step-num teal">3</span>
+        <span>Paste the URL below → tap <strong>Add Source</strong></span>
+      </li>
+      <li>
+        <span class="step-num teal">4</span>
+        <span>AudioMixer appears in your app list. Tap <strong>Free</strong> to install.</span>
+      </li>
+    </ul>
+
+    <div class="source-box">
+      <code id="sourceURL">https://raw.githubusercontent.com/BeholdArlo/katacoda-scenarios/main/docs/source.json</code>
+      <button class="copy-btn" onclick="copySource()">Copy</button>
+    </div>
+  </div>
+
+  <!-- ── Spotify Setup ── -->
+  <div class="card yellow-glow">
+    <span class="section-tag yellow">🎵 Spotify Setup — 30 Seconds</span>
+    <h2>Unlock Spotify Search</h2>
+    <p class="subtitle">Spotify requires a free API key. You only do this once. No payment, no subscription — just a free developer account.</p>
+
+    <ul class="steps">
+      <li>
+        <span class="step-num yellow">1</span>
+        <span>Visit <a href="https://developer.spotify.com/dashboard" style="color:var(--yellow)">developer.spotify.com/dashboard</a> and log in with your regular Spotify account.</span>
+      </li>
+      <li>
+        <span class="step-num yellow">2</span>
+        <span>Click <strong>"Create app"</strong>. Name it anything (e.g. "My Mixer"). Under <strong>Redirect URIs</strong>, type exactly: <code style="background:rgba(255,229,0,.1);padding:2px 6px;border-radius:4px;color:var(--yellow);font-size:13px;">audiomixer://spotify-callback</code></span>
+      </li>
+      <li>
+        <span class="step-num yellow">3</span>
+        <span>Click <strong>Save</strong>. Then click <strong>Settings</strong> and copy your <strong>Client ID</strong> (looks like: <code style="color:rgba(255,248,231,.5);font-size:13px;">abc123def456...</code>).</span>
+      </li>
+      <li>
+        <span class="step-num yellow">4</span>
+        <span>Open <strong>AudioMixer</strong> → tap the <strong>⚙️ gear icon</strong> → paste your Client ID → done! Spotify search is unlocked instantly.</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ── Features ── -->
+  <div class="card">
+    <span class="section-tag orange">✨ What You Get</span>
+    <h2>Features</h2>
+    <br>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;color:var(--orange)">🎬 YouTube</div>
+        <p style="font-size:14px;color:rgba(255,248,231,.6);line-height:1.5">Paste any URL. Real volume + stereo pan control via Web Audio API.</p>
+      </div>
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;color:var(--teal)">🎵 Spotify</div>
+        <p style="font-size:14px;color:rgba(255,248,231,.6);line-height:1.5">Search &amp; play 30-second previews. Full-track via Spotify App Remote.</p>
+      </div>
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;color:var(--yellow)">🎚️ DJ Crossfader</div>
+        <p style="font-size:14px;color:rgba(255,248,231,.6);line-height:1.5">Equal-power curve crossfade. Haptic snap at center. Real-time control.</p>
+      </div>
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;color:var(--magenta)">🎛️ Mixer</div>
+        <p style="font-size:14px;color:rgba(255,248,231,.6);line-height:1.5">Per-channel volume, stereo pan, and 4-preset EQ for Spotify audio.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FAQ ── -->
+  <div class="card">
+    <span class="section-tag teal">❓ Common Questions</span>
+    <h2>FAQ</h2>
+    <br>
+    <div style="display:flex;flex-direction:column;gap:18px;">
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;">Is this free?</div>
+        <p style="font-size:14px;color:rgba(255,248,231,.6);line-height:1.5">Yes. AudioMixer is free and open source. SideStore is free. The Spotify API key is free.</p>
+      </div>
+      <hr class="divider">
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;">Do I need a Mac?</div>
+        <p style="font-size:14px;color:rgba(255,248,231,.6);line-height:1.5">No. The IPA is pre-built via GitHub Actions. SideStore re-signs it using your free Apple ID entirely on-device.</p>
+      </div>
+      <hr class="divider">
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;">Will SideStore expire?</div>
+        <p style="font-size:14px;color:rgba(255,248,231,.6);line-height:1.5">Free Apple IDs need app refresh every 7 days. SideStore does this automatically in the background over Wi-Fi — no action needed from you.</p>
+      </div>
+      <hr class="divider">
+      <div>
+        <div style="font-weight:700;margin-bottom:4px;">Can I hear YouTube and Spotify at the same time?</div>
+        <p style="font-size:14px;color:rgba(255,248,231,.6);line-height:1.5">Yes — that's the whole point. AudioMixer uses <code style="font-size:12px;color:rgba(255,248,231,.5)">AVAudioSession.mixWithOthers</code> so both sources play simultaneously without ducking each other.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    <p>AudioMixer is open source. <a href="https://github.com/BeholdArlo/katacoda-scenarios">View on GitHub</a></p>
+    <p style="margin-top:8px;">Not affiliated with YouTube or Spotify.</p>
+  </div>
+</footer>
+
+<script>
+  function copySource() {
+    const url = document.getElementById('sourceURL').textContent.trim();
+    navigator.clipboard.writeText(url).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy'; }, 2000);
+    });
+  }
+</script>
+</body>
+</html>

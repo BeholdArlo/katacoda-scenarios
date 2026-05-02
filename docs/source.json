@@ -1,0 +1,40 @@
+{
+  "name": "AudioMixer",
+  "identifier": "com.audiomixer.source",
+  "subtitle": "YouTube + Spotify mixer for iOS",
+  "description": "AudioMixer lets you play YouTube videos and Spotify music simultaneously with independent volume control, stereo panning, EQ, and a DJ crossfader.",
+  "iconURL": "https://raw.githubusercontent.com/BeholdArlo/katacoda-scenarios/main/docs/icon.png",
+  "website": "https://beholdarlo.github.io/katacoda-scenarios",
+  "tintColor": "FF5500",
+  "apps": [
+    {
+      "name": "AudioMixer",
+      "bundleIdentifier": "com.audiomixer.app",
+      "developerName": "AudioMixer",
+      "subtitle": "YouTube + Spotify, one glorious mix",
+      "localizedDescription": "Mix YouTube videos and Spotify music simultaneously. Features:\n\n• Independent volume & stereo pan for each source\n• DJ crossfader with equal-power curve\n• Spotify search with 30-second previews\n• Spotify App Remote for full-track playback\n• 4-preset EQ on Spotify channel\n• Retro 70s psychedelic UI with glassmorphic design",
+      "iconURL": "https://raw.githubusercontent.com/BeholdArlo/katacoda-scenarios/main/docs/icon.png",
+      "tintColor": "FF5500",
+      "screenshotURLs": [],
+      "versions": [
+        {
+          "version": "1.0.0",
+          "date": "2024-01-01T00:00:00Z",
+          "localizedDescription": "Initial release",
+          "downloadURL": "https://github.com/BeholdArlo/katacoda-scenarios/releases/latest/download/AudioMixerApp.ipa",
+          "size": 0,
+          "minOSVersion": "16.0"
+        }
+      ],
+      "appPermissions": {
+        "entitlements": [],
+        "privacy": [
+          {
+            "name": "Microphone",
+            "usageDescription": "Not used — listed for AVAudioSession compatibility only."
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,56 +1,68 @@
 import SwiftUI
 
 struct MusicSearchView: View {
+    @EnvironmentObject var appConfig:      AppConfig
     @EnvironmentObject var spotifyService: SpotifyAPIService
-    @EnvironmentObject var audioEngine: AudioEngineService
-    @State private var query = ""
+    @EnvironmentObject var audioEngine:    AudioEngineService
+    @State private var query       = ""
+    @State private var searchFocus = false
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if !spotifyService.isAuthenticated {
-                    spotifyLoginView
-                } else {
-                    trackListView
-                }
+        VStack(spacing: 0) {
+            if !appConfig.isSpotifyConfigured {
+                SpotifySetupCard()
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                Spacer()
+            } else if !spotifyService.isAuthenticated {
+                connectView
+            } else {
+                trackListView
             }
-            .navigationTitle("Spotify")
-            .navigationBarTitleDisplayMode(.large)
-            .alert("Error", isPresented: Binding(
-                get: { spotifyService.authError != nil },
-                set: { if !$0 { spotifyService.authError = nil } }
-            )) {
-                Button("OK", role: .cancel) { spotifyService.authError = nil }
-            } message: {
-                Text(spotifyService.authError ?? "")
-            }
+        }
+        .alert("Error", isPresented: Binding(
+            get: { spotifyService.authError != nil },
+            set: { if !$0 { spotifyService.authError = nil } }
+        )) {
+            Button("OK", role: .cancel) { spotifyService.authError = nil }
+        } message: {
+            Text(spotifyService.authError ?? "")
         }
     }
 
-    // MARK: – Login prompt
+    // MARK: – Connect prompt
 
-    private var spotifyLoginView: some View {
-        VStack(spacing: 24) {
+    private var connectView: some View {
+        VStack(spacing: 28) {
             Spacer()
+
             Image(systemName: "music.note.list")
-                .font(.system(size: 64))
-                .foregroundColor(.green)
+                .font(.system(size: 60))
+                .foregroundColor(DS.Color.teal)
+                .glow(DS.Color.teal, radius: 20)
 
-            Text("Connect Spotify")
-                .font(.title.bold())
+            VStack(spacing: 10) {
+                Text("Connect Spotify")
+                    .font(.title2.weight(.black))
+                    .neon(DS.Color.cream)
 
-            Text("Sign in with your Spotify account to search tracks and play 30-second previews. Full-track playback requires the Spotify app (see README).")
-                .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 32)
-
-            Button(action: { spotifyService.authenticate() }) {
-                Label("Connect with Spotify", systemImage: "arrow.right.circle.fill")
-                    .frame(maxWidth: .infinity)
-                    .padding()
+                Text("Sign in to search tracks and play 30-second previews.")
+                    .font(.subheadline)
+                    .foregroundColor(DS.Color.cream.opacity(0.6))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(.green)
+
+            Button { spotifyService.authenticate() } label: {
+                Label("Connect with Spotify", systemImage: "arrow.right.circle.fill")
+                    .font(.headline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                    .foregroundColor(DS.Color.void)
+                    .background(DS.Color.teal)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .glow(DS.Color.teal, radius: 10)
+            }
             .padding(.horizontal, 32)
 
             Spacer()
@@ -61,41 +73,61 @@ struct MusicSearchView: View {
 
     private var trackListView: some View {
         VStack(spacing: 0) {
-            // Now playing bar
             if let track = spotifyService.currentTrack {
                 NowPlayingBar(track: track)
-                    .padding(.horizontal)
+                    .padding(.horizontal, 16)
                     .padding(.top, 8)
+                    .padding(.bottom, 4)
             }
 
-            // Search field
-            HStack {
-                Image(systemName: "magnifyingglass").foregroundColor(.secondary)
-                TextField("Search songs, artists, albums…", text: $query)
+            // Search bar
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundColor(searchFocus ? DS.Color.acidYellow : DS.Color.cream.opacity(0.4))
+                    .glow(searchFocus ? DS.Color.acidYellow : .clear, radius: 4)
+
+                TextField("Search songs, artists…", text: $query)
+                    .foregroundColor(DS.Color.cream)
                     .autocapitalization(.none)
                     .disableAutocorrection(true)
-                    .onChange(of: query) { _, newValue in
-                        spotifyService.search(query: newValue)
-                    }
+                    .onSubmit { spotifyService.search(query: query) }
+                    .onChange(of: query) { _, v in spotifyService.search(query: v) }
+                    .onTapGesture { searchFocus = true }
+
                 if !query.isEmpty {
-                    Button { query = "" } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundColor(.secondary)
+                    Button {
+                        query = ""
+                        searchFocus = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(DS.Color.cream.opacity(0.4))
                     }
                 }
             }
-            .padding(10)
-            .background(Color(.systemGray6))
-            .cornerRadius(10)
-            .padding()
+            .padding(12)
+            .glassCard(cornerRadius: 14)
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(searchFocus ? DS.Color.teal.opacity(0.5) : DS.Color.glassEdge, lineWidth: 1)
+            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .animation(.easeInOut(duration: 0.2), value: searchFocus)
 
             // Results
             if spotifyService.isSearching {
-                ProgressView().padding()
-                Spacer()
+                ShimmerTrackList()
             } else if spotifyService.searchResults.isEmpty && !query.isEmpty {
-                ContentUnavailableView("No results", systemImage: "music.note.slash",
-                                       description: Text("No tracks found for "\(query)""))
-                Spacer()
+                VStack(spacing: 12) {
+                    Spacer()
+                    Image(systemName: "music.note.slash")
+                        .font(.system(size: 40))
+                        .foregroundColor(DS.Color.cream.opacity(0.2))
+                    Text("No results for "\(query)"")
+                        .font(.subheadline)
+                        .foregroundColor(DS.Color.cream.opacity(0.4))
+                    Spacer()
+                }
             } else {
                 List(spotifyService.searchResults) { track in
                     TrackRow(track: track) {
@@ -106,80 +138,171 @@ struct MusicSearchView: View {
                                                     artist: track.artistName)
                         }
                     }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
+    }
+}
+
+// MARK: – Spotify setup card (when no client ID configured)
+
+private struct SpotifySetupCard: View {
+    @EnvironmentObject var appConfig: AppConfig
+    @State private var clientID = ""
+    private let dashboardURL = "https://developer.spotify.com/dashboard"
+
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 10) {
+                Image(systemName: "key.fill")
+                    .font(.title3)
+                    .foregroundColor(DS.Color.burnOrange)
+                    .glow(DS.Color.burnOrange, radius: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("30-Second Spotify Setup")
+                        .font(.headline.weight(.bold))
+                        .foregroundColor(DS.Color.cream)
+                    Text("Free • No credit card • One time only")
+                        .font(.caption)
+                        .foregroundColor(DS.Color.cream.opacity(0.55))
+                }
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                TextField("Paste Client ID", text: $clientID)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundColor(DS.Color.cream)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .onChange(of: clientID) { _, v in
+                        appConfig.spotifyClientID = v.trimmingCharacters(in: .whitespaces)
+                    }
+
+                Button {
+                    if let str = UIPasteboard.general.string {
+                        clientID = str.trimmingCharacters(in: .whitespaces)
+                    }
+                } label: {
+                    Text("Paste")
+                        .font(.caption.weight(.bold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(DS.Color.burnOrange.opacity(0.2))
+                        .foregroundColor(DS.Color.burnOrange)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(12)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+            Button {
+                UIApplication.shared.open(URL(string: dashboardURL)!)
+            } label: {
+                Label("Get free Client ID →", systemImage: "arrow.up.right.square")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(DS.Color.teal)
+            }
+        }
+        .padding(18)
+        .glassCard(cornerRadius: 18)
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(DS.Color.burnOrange.opacity(0.35), lineWidth: 1)
+        )
     }
 }
 
 // MARK: – Track row
 
 struct TrackRow: View {
-    let track: SpotifyTrack
+    let track:  SpotifyTrack
     let onPlay: () -> Void
 
     @EnvironmentObject var spotifyService: SpotifyAPIService
-    @EnvironmentObject var audioEngine: AudioEngineService
+    @EnvironmentObject var audioEngine:    AudioEngineService
+    private var isCurrent: Bool { spotifyService.currentTrack?.id == track.id }
 
-    private var isCurrentTrack: Bool {
-        spotifyService.currentTrack?.id == track.id
+    private var artTint: Color {
+        let palette: [Color] = [DS.Color.teal, DS.Color.burnOrange, DS.Color.magenta, DS.Color.acidYellow]
+        return palette[abs(track.id.hashValue) % palette.count]
     }
 
     var body: some View {
         HStack(spacing: 12) {
-            // Artwork
-            AsyncImage(url: track.artworkURL) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                Color(.systemGray5)
-                    .overlay(Image(systemName: "music.note").foregroundColor(.secondary))
+            // Artwork with per-track accent glow
+            AsyncImage(url: track.artworkURL) { phase in
+                switch phase {
+                case .success(let img):
+                    img.resizable().scaledToFill()
+                case .failure, .empty:
+                    DS.Color.deepViolet
+                        .overlay(Image(systemName: "music.note").foregroundColor(DS.Color.cream.opacity(0.3)))
+                @unknown default:
+                    Color.clear
+                }
             }
-            .frame(width: 52, height: 52)
-            .cornerRadius(8)
-            .clipped()
+            .frame(width: 50, height: 50)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(isCurrent ? artTint : Color.clear, lineWidth: 2)
+            )
+            .glow(isCurrent ? artTint : .clear, radius: 6)
 
             // Metadata
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(track.name)
-                    .font(.body.weight(isCurrentTrack ? .semibold : .regular))
-                    .foregroundColor(isCurrentTrack ? .green : .primary)
+                    .font(.subheadline.weight(isCurrent ? .bold : .regular))
+                    .foregroundColor(isCurrent ? artTint : DS.Color.cream)
+                    .glow(isCurrent ? artTint : .clear, radius: 2)
                     .lineLimit(1)
                 Text(track.artistName)
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(DS.Color.cream.opacity(0.5))
                     .lineLimit(1)
             }
 
             Spacer()
 
-            // Duration + play button
             VStack(alignment: .trailing, spacing: 4) {
                 Text(track.formattedDuration)
                     .font(.caption2.monospacedDigit())
-                    .foregroundColor(.secondary)
+                    .foregroundColor(DS.Color.cream.opacity(0.4))
 
-                if isCurrentTrack && audioEngine.isLoadingPreview {
-                    ProgressView().frame(width: 28, height: 28)
-                } else if isCurrentTrack {
+                if isCurrent && audioEngine.isLoadingPreview {
+                    ProgressView()
+                        .tint(DS.Color.teal)
+                        .frame(width: 28, height: 28)
+                } else if isCurrent {
                     Button { audioEngine.pauseResume() } label: {
                         Image(systemName: audioEngine.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                             .font(.title2)
-                            .foregroundColor(.green)
+                            .foregroundColor(DS.Color.teal)
+                            .glow(DS.Color.teal, radius: 6)
                     }
                 } else {
                     Button { onPlay() } label: {
                         Image(systemName: "play.circle")
                             .font(.title2)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(DS.Color.cream.opacity(0.4))
                     }
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
+        .padding(.horizontal, 12)
+        .glassCard(cornerRadius: 14)
         .contentShape(Rectangle())
         .onTapGesture { if !audioEngine.isLoadingPreview { onPlay() } }
     }
+
 }
 
 // MARK: – Now playing bar
@@ -187,64 +310,117 @@ struct TrackRow: View {
 struct NowPlayingBar: View {
     let track: SpotifyTrack
     @EnvironmentObject var audioEngine: AudioEngineService
+    @State private var wavePhase = false
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: track.artworkURL) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                Color(.systemGray5)
+            AsyncImage(url: track.artworkURL) { phase in
+                if case .success(let img) = phase {
+                    img.resizable().scaledToFill()
+                } else {
+                    DS.Color.deepViolet
+                }
             }
-            .frame(width: 40, height: 40)
-            .cornerRadius(6)
-            .clipped()
+            .frame(width: 38, height: 38)
+            .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(track.name).font(.subheadline.weight(.semibold)).lineLimit(1)
-                Text(track.artistName).font(.caption).foregroundColor(.secondary).lineLimit(1)
+                Text(track.name).font(.subheadline.weight(.semibold)).lineLimit(1).foregroundColor(DS.Color.cream)
+                Text(track.artistName).font(.caption).foregroundColor(DS.Color.cream.opacity(0.5)).lineLimit(1)
             }
 
             Spacer()
 
-            // Progress
-            Text(timeString(audioEngine.currentPlaybackTime))
-                .font(.caption2.monospacedDigit())
-                .foregroundColor(.secondary)
+            // Animated waveform
+            WaveformIndicator(playing: audioEngine.isPlaying)
 
             Button { audioEngine.pauseResume() } label: {
                 Image(systemName: audioEngine.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title3)
-                    .foregroundColor(.green)
+                    .font(.title3).foregroundColor(DS.Color.teal).glow(DS.Color.teal, radius: 6)
             }
 
             Button { audioEngine.stopPlayback() } label: {
                 Image(systemName: "stop.fill")
-                    .font(.title3)
-                    .foregroundColor(.secondary)
+                    .font(.title3).foregroundColor(DS.Color.cream.opacity(0.5))
             }
         }
         .padding(10)
-        .background(Color(.systemGray6))
-        .cornerRadius(12)
-
-        // Playback progress bar
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Capsule().fill(Color(.systemGray4)).frame(height: 3)
+        .glassCard(cornerRadius: 14)
+        .overlay(
+            // Playback progress underline
+            GeometryReader { geo in
                 let ratio = audioEngine.currentTrackDuration > 0
-                    ? audioEngine.currentPlaybackTime / audioEngine.currentTrackDuration
-                    : 0
+                    ? audioEngine.currentPlaybackTime / audioEngine.currentTrackDuration : 0
+                VStack {
+                    Spacer()
+                    Capsule()
+                        .fill(DS.Color.teal)
+                        .frame(width: geo.size.width * CGFloat(min(ratio, 1)), height: 3)
+                        .glow(DS.Color.teal, radius: 3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        )
+    }
+}
+
+// MARK: – Waveform animation
+
+private struct WaveformIndicator: View {
+    let playing: Bool
+    @State private var phase = false
+
+    private let heights: [CGFloat] = [6, 12, 8, 14, 10]
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(heights.indices, id: \.self) { i in
                 Capsule()
-                    .fill(Color.green)
-                    .frame(width: geo.size.width * CGFloat(min(ratio, 1.0)), height: 3)
+                    .fill(DS.Color.teal)
+                    .frame(width: 3, height: playing ? heights[i] : 4)
+                    .animation(
+                        playing ? .easeInOut(duration: 0.35).repeatForever().delay(Double(i) * 0.07) : .default,
+                        value: playing
+                    )
             }
         }
-        .frame(height: 3)
-        .padding(.horizontal, 4)
+        .glow(DS.Color.teal, radius: 3)
     }
+}
 
-    private func timeString(_ t: Double) -> String {
-        let m = Int(t) / 60; let s = Int(t) % 60
-        return String(format: "%d:%02d", m, s)
+// MARK: – Shimmer track list
+
+private struct ShimmerTrackList: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            ForEach(0..<5, id: \.self) { _ in
+                HStack(spacing: 12) {
+                    RoundedRectangle(cornerRadius: 8).frame(width: 50, height: 50)
+                    VStack(alignment: .leading, spacing: 6) {
+                        RoundedRectangle(cornerRadius: 4).frame(height: 12)
+                        RoundedRectangle(cornerRadius: 4).frame(width: 100, height: 10)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .foregroundColor(DS.Color.deepViolet)
+                .glassCard(cornerRadius: 14)
+                .shimmer()
+                .padding(.horizontal, 16)
+            }
+            Spacer()
+        }
+        .padding(.top, 8)
     }
+}
+
+#Preview {
+    MusicSearchView()
+        .environmentObject(AppConfig())
+        .environmentObject(SpotifyAPIService())
+        .environmentObject(AudioEngineService())
+        .background(DS.Color.bgGradient.ignoresSafeArea())
+        .preferredColorScheme(.dark)
 }
